@@ -1,9 +1,7 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-
 const Task = require("../models/Task");
 const {
   createTask,
@@ -13,12 +11,12 @@ const {
   deleteTask,
 } = require("../controllers/TaskController");
 
-// ✅ Import your central Auth Middleware (fixes role detection)
+// ✅ Central Auth Middleware (fixes role detection)
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-/* ---------- Multer (absolute path) ---------- */
+/* ---------- Multer Setup ---------- */
 const uploadsRoot = path.join(__dirname, "..", "uploads");
 if (!fs.existsSync(uploadsRoot)) fs.mkdirSync(uploadsRoot, { recursive: true });
 
@@ -45,10 +43,16 @@ router.patch("/:id/status", protect, updateTaskStatus);
 // 🧩 Admin + Manager → Can Delete
 router.delete("/:id", protect, restrictTo("Admin", "Manager"), deleteTask);
 
-/* ---------- Analytics (unchanged but protected) ---------- */
-router.get("/analytics", protect, async (_req, res) => {
+/* ---------- Analytics (role-based visibility) ---------- */
+router.get("/analytics", protect, async (req, res) => {
   try {
-    const tasks = await Task.find().populate("assignedTo", "name email role").lean();
+    let filter = {};
+    if (req.user.role === "Manager") {
+      filter = { "assignedTo.role": "Employee" };
+    }
+    const tasks = await Task.find(filter)
+      .populate("assignedTo", "name email role")
+      .lean();
     res.json(tasks || []);
   } catch (err) {
     console.error("Error fetching analytics data:", err);
@@ -77,7 +81,9 @@ router.post("/:id/upload", protect, upload.single("file"), async (req, res) => {
     task.attachments.push(fileData);
     await task.save();
 
-    res.status(200).json({ message: "✅ File uploaded successfully", attachment: fileData });
+    res
+      .status(200)
+      .json({ message: "✅ File uploaded successfully", attachment: fileData });
   } catch (err) {
     console.error("❌ Upload error:", err);
     res.status(500).json({ message: "Error uploading file" });
@@ -106,7 +112,9 @@ router.delete("/:id/files/:filename", protect, restrictTo("Admin", "Manager"), a
     const task = await Task.findById(id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    const index = (task.attachments || []).findIndex((a) => a.filePath.endsWith(filename));
+    const index = (task.attachments || []).findIndex((a) =>
+      a.filePath.endsWith(filename)
+    );
     if (index === -1) return res.status(404).json({ message: "File not found" });
 
     const absolutePath = path.join(__dirname, "..", task.attachments[index].filePath);
