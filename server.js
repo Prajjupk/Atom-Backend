@@ -19,30 +19,33 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Middleware
 app.use(express.json());
 
-// ---------- CORS (explicit) ----------
-/*
-  Use FRONTEND_URL in your Render environment variables, e.g.
-  FRONTEND_URL=https://atom-frontend.vercel.app
-  This allows the backend to accept Authorization header from that origin.
-*/
+// ---------- CORS (explicit + debug) ----------
 const allowedOrigins = [
-  process.env.FRONTEND_URL,    // set this in Render (production)
-  "http://localhost:5173",     // Vite dev
-  "http://localhost:3000",     // optional
-].filter(Boolean); // removes undefined if FRONTEND_URL not set
+  process.env.FRONTEND_URL, // e.g. https://atom-frontend-three.vercel.app
+  "http://localhost:5173",
+  "http://localhost:3000",
+].filter(Boolean);
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (like mobile apps, curl, server-to-server)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      // Allow requests without origin (curl, server-to-server)
+      if (!origin) {
+        console.log("🌐 No origin (server-to-server request)");
+        return callback(null, true);
+      }
+
+      // Log every incoming origin
+      console.log("🌐 Incoming Origin:", origin);
+
+      if (allowedOrigins.includes(origin)) {
+        console.log("✅ CORS allowed for:", origin);
         return callback(null, true);
       } else {
-        return callback(new Error("CORS policy: Origin not allowed"), false);
+        console.log("❌ CORS blocked:", origin);
+        return callback(new Error("Not allowed by CORS"), false);
       }
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -51,7 +54,7 @@ app.use(
   })
 );
 
-// Static files for uploaded assets (served at /uploads/...)
+// Static files for uploaded assets (served at /uploads/…)
 app.use("/uploads", express.static(uploadDir));
 
 // Routes
@@ -65,5 +68,9 @@ app.get("/", (_req, res) => {
 app.use("/api/users", userRoutes);
 app.use("/api/tasks", taskRoutes);
 
+// --- Startup log (confirm FRONTEND_URL loaded) ---
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log("🔗 FRONTEND_URL =", process.env.FRONTEND_URL);
+});
