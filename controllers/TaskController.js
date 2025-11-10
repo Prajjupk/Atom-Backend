@@ -28,17 +28,30 @@ const createTask = async (req, res) => {
   }
 };
 
-// 📜 Get Tasks
+// 📜 Get Tasks (✨ Updated with role-based logic)
 const getTasks = async (req, res) => {
   try {
     let filter = {};
-    if (req.user.role === "Employee") filter = { assignedTo: req.user.id };
+
+    if (req.user.role === "Employee") {
+      filter = { assignedTo: req.user.id };
+    } else if (req.user.role === "Manager") {
+      // Manager sees all employee tasks
+      const employees = await User.find({ role: "Employee" }).select("_id");
+      filter = { assignedTo: { $in: employees.map((e) => e._id) } };
+    } else if (req.user.role === "Admin") {
+      // Admin sees everything
+      filter = {};
+    }
+
     const tasks = await Task.find(filter)
       .sort({ createdAt: -1 })
-      .populate("assignedTo", "name email")
+      .populate("assignedTo", "name email role")
       .populate("attachments.uploadedBy", "name email");
+
     res.json(tasks);
   } catch (error) {
+    console.error("❌ Get tasks error:", error);
     res.status(500).json({ message: "Server error", error });
   }
 };

@@ -69,7 +69,6 @@ router.post("/:id/upload", protect, upload.single("file"), async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // Web-safe path for static serving
     const webPath = path.posix.join("uploads", req.file.filename);
 
     const fileData = {
@@ -98,7 +97,7 @@ router.get("/:id/files", protect, async (req, res) => {
     res.json(task.attachments || []);
   } catch (err) {
     console.error("❌ Get files error:", err);
-    res.status(500).json({ message: "Error fetching files" });
+    res.status(500).json({ message: "Error fetching files", error: err });
   }
 });
 
@@ -109,20 +108,16 @@ router.delete("/:id/files/:filename", protect, restrictTo("Admin", "Manager"), a
     const task = await Task.findById(id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // find attachment by filename suffix
     const index = (task.attachments || []).findIndex((a) => a.filePath.endsWith(filename));
     if (index === -1) return res.status(404).json({ message: "File not found" });
 
     const absolutePath = path.join(__dirname, "..", task.attachments[index].filePath);
-    // delete from disk if exists
     try {
       if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
     } catch (e) {
-      // non-fatal, continue to remove from DB
       console.warn("⚠️ Could not delete file from disk:", absolutePath, e.message);
     }
 
-    // remove from task document
     task.attachments.splice(index, 1);
     await task.save();
 
