@@ -13,24 +13,10 @@ const {
   deleteTask,
 } = require("../controllers/TaskController");
 
+// ✅ Import your central Auth Middleware (fixes role detection)
+const { protect, restrictTo } = require("../middleware/authMiddleware");
+
 const router = express.Router();
-
-/* ---------- Auth ---------- */
-const protect = (req, res, next) => {
-  const token = (req.headers.authorization || "").split(" ")[1];
-  if (!token) return res.status(401).json({ message: "Not authorized" });
-  try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-};
-
-const restrictTo = (...roles) => (req, _res, next) =>
-  roles.includes(req.user.role)
-    ? next()
-    : next({ status: 403, message: "Access denied" });
 
 /* ---------- Multer (absolute path) ---------- */
 const uploadsRoot = path.join(__dirname, "..", "uploads");
@@ -44,13 +30,22 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /* ---------- Task CRUD ---------- */
+// 🧩 Admin + Manager → Can Create Tasks
 router.post("/", protect, restrictTo("Admin", "Manager"), createTask);
+
+// 🧩 Everyone → Can View (based on role)
 router.get("/", protect, getTasks);
+
+// 🧩 Admin + Manager → Can Edit Task
 router.put("/:id", protect, restrictTo("Admin", "Manager"), updateTask);
+
+// 🧩 Employee → Can Update Status
 router.patch("/:id/status", protect, updateTaskStatus);
+
+// 🧩 Admin + Manager → Can Delete
 router.delete("/:id", protect, restrictTo("Admin", "Manager"), deleteTask);
 
-/* ---------- Analytics (unchanged) ---------- */
+/* ---------- Analytics (unchanged but protected) ---------- */
 router.get("/analytics", protect, async (_req, res) => {
   try {
     const tasks = await Task.find().populate("assignedTo", "name email role").lean();
@@ -92,7 +87,10 @@ router.post("/:id/upload", protect, upload.single("file"), async (req, res) => {
 /* ---------- List files for a task ---------- */
 router.get("/:id/files", protect, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id).populate("attachments.uploadedBy", "name email");
+    const task = await Task.findById(req.params.id).populate(
+      "attachments.uploadedBy",
+      "name email"
+    );
     if (!task) return res.status(404).json({ message: "Task not found" });
     res.json(task.attachments || []);
   } catch (err) {
